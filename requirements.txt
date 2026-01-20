@@ -1,0 +1,27 @@
+# RSS Parsing
+feedparser>=6.0.10
+
+# AI / LangChain
+langchain>=0.3.0
+langchain-openai>=0.3.0
+langchain-core>=0.3.0
+
+# Telegram
+python-telegram-bot>=21.0
+
+# Cloudflare R2 Storage (S3-compatible)
+boto3>=1.34.0
+
+# Web Scraping (Railway Browserless v2)
+playwright==1.56.0
+
+# LangSmith tracing
+langsmith>=0.1.0
+
+cloudscraper>=1.2.71
+
+beautifulsoup4>=4.12.0
+
+asyncpg>=0.29.0
+
+aiohttp

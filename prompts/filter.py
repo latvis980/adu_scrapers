@@ -61,7 +61,7 @@ Title: {title}
 
 Description: {description}
 
-Source: {source}
+Content excerpt: {content}
 
 Respond with ONLY one line in this exact format:
 VERDICT: INCLUDE or EXCLUDE

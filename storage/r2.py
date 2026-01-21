@@ -388,6 +388,85 @@ class R2Storage:
             "has_image": has_image,
         }
 
+    def save_hero_image(
+        self,
+        image_bytes: bytes,
+        article: dict,
+        source: str,
+        target_date: Optional[date] = None
+    ) -> Optional[dict]:
+        """
+        Save hero image to R2 storage independently (for custom scrapers).
+
+        This method is used by custom scrapers (archiposition, gooood) that
+        extract and download hero images themselves, rather than relying
+        on the main pipeline's browserless scraper.
+
+        Args:
+            image_bytes: Image bytes to save
+            article: Article dict with hero_image info
+            source: Source ID for naming
+            target_date: Target date (defaults to today)
+
+        Returns:
+            Updated hero_image dict with r2_path and r2_url, or None if failed
+        """
+        if not image_bytes or len(image_bytes) < 1000:
+            return None
+
+        if target_date is None:
+            target_date = date.today()
+
+        # Get hero image info
+        hero = article.get("hero_image", {})
+        original_url = hero.get("url", "")
+
+        # Determine extension
+        extension = self._get_image_extension(original_url, None)
+
+        # Get next index for this source
+        index = self._get_next_index(source)
+        article_id = self.get_article_id(source, index)
+
+        # Build image path
+        image_path = self._build_image_path(source, index, extension, target_date)
+        image_filename = f"{article_id}.{extension}"
+
+        try:
+            # Upload to R2
+            content_type = self._get_content_type(extension)
+
+            self.client.put_object(
+                Bucket=self.bucket_name,
+                Key=image_path,
+                Body=image_bytes,
+                ContentType=content_type,
+                CacheControl="public, max-age=31536000"
+            )
+
+            # Build public URL if available
+            r2_url = None
+            if self.public_url:
+                r2_url = f"{self.public_url.rstrip('/')}/{image_path}"
+
+            # Return updated hero_image dict
+            updated_hero = {
+                "url": original_url,
+                "width": hero.get("width"),
+                "height": hero.get("height"),
+                "source": hero.get("source", "custom_scraper"),
+                "r2_path": image_path,
+                "r2_url": r2_url,
+                "filename": image_filename,
+                "bytes": image_bytes,  # Include bytes for main pipeline
+            }
+
+            return updated_hero
+
+        except Exception as e:
+            print(f"   [ERROR] Failed to save hero image: {e}")
+            return None
+
     def save_manifest(
         self,
         candidates: List[dict],

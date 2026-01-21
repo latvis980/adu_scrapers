@@ -3,11 +3,16 @@
 Article Filter Prompts
 Prompts for classifying and filtering architecture news articles.
 
+This filter runs BEFORE summarization to save API costs.
+It uses the scraped full_content for better accuracy.
+
 Filters OUT:
 - Interior design articles
 - Private residences / single-family homes
 - Product/furniture design
 - Small-scale renovations
+- Magazine issue announcements
+- Interviews and opinion pieces
 
 Keeps:
 - Large-scale architectural projects
@@ -39,8 +44,9 @@ INCLUDE articles about:
 EXCLUDE articles about:
 - New issues of architectural magazines even if they mention projects
 - Pieces about newsletters, even if they mention projects
+- Articles about architecture schools, architecture students, or architecture students' projects
 - Interviews and opinion pieces
-- Discussions
+- Discussions and roundtables
 - Interior design and decoration
 - Private residences, single-family homes, villas, apartments
 - Furniture and product design
@@ -54,7 +60,7 @@ EXCLUDE articles about:
 Be strict: when in doubt about private residences or interiors, EXCLUDE.
 Do not use emoji in your response."""
 
-# User message template
+# User message template - uses scraped content for better accuracy
 FILTER_USER_TEMPLATE = """Classify this architecture article:
 
 Title: {title}

@@ -10,8 +10,8 @@ Schedule: 18:30 Lisbon time (17:30 UTC in winter, 16:30 UTC in summer)
 Pipeline:
     1. Run custom scrapers to discover new article URLs
     2. Scrape full article content (Browserless)
-    3. AI content filtering
-    4. Generate AI summaries (OpenAI)
+    3. AI content filtering (BEFORE summarization to save costs)
+    4. Generate AI summaries (OpenAI) - only for filtered articles
     5. Save articles to R2 storage
 
 Usage:
@@ -127,9 +127,67 @@ def parse_args():
 # Helper Functions
 # =============================================================================
 
+def filter_articles(articles: list, llm) -> tuple[list, list]:
+    """
+    Filter articles using AI - runs BEFORE summarization.
+
+    Uses scraped full_content for better accuracy.
+
+    Args:
+        articles: List of articles with scraped content
+        llm: LLM instance
+
+    Returns:
+        Tuple of (included_articles, excluded_articles)
+    """
+    print(f"\n[FILTER] AI content filtering {len(articles)} articles...")
+
+    included = []
+    excluded = []
+
+    # Create the chain once
+    filter_chain = FILTER_PROMPT_TEMPLATE | llm
+
+    for i, article in enumerate(articles, 1):
+        title = article.get("title", "No title")
+        source_name = article.get("source_name", article.get("source_id", "Unknown"))
+        print(f"   [{i}/{len(articles)}] [{source_name}] {title[:40]}...")
+
+        try:
+            # Use scraped full_content for filtering (most accurate)
+            # Fall back to description if full_content not available
+            content_for_filter = (
+                article.get("full_content", "") or 
+                article.get("content", "") or 
+                article.get("description", "")
+            )
+
+            # Invoke the chain with proper parameters
+            response = filter_chain.invoke({
+                "title": title,
+                "description": article.get("description", "")[:500],
+                "content": content_for_filter[:1000]  # Use scraped content
+            })
+
+            result = parse_filter_response(response.content)
+
+            if result.get("include", True):
+                included.append(article)
+                print(f"      [OK] Included")
+            else:
+                excluded.append(article)
+                print(f"      [SKIP] Excluded: {result.get('reason', 'N/A')}")
+
+        except Exception as e:
+            print(f"      [WARN] Filter error: {e} - including by default")
+            included.append(article)
+
+    return included, excluded
+
+
 def generate_summaries(articles: list, llm, prompt_template: str) -> list:
     """Generate AI summaries for articles."""
-    print(f"\n Generating AI summaries for {len(articles)} articles...")
+    print(f"\n[SUMMARY] Generating AI summaries for {len(articles)} articles...")
 
     for i, article in enumerate(articles, 1):
         title = article.get("title", "No title")
@@ -142,7 +200,7 @@ def generate_summaries(articles: list, llm, prompt_template: str) -> list:
             article["ai_summary"] = summarized.get("ai_summary", "")
             article["tags"] = summarized.get("tags", [])
         except Exception as e:
-            print(f"      Error: {e}")
+            print(f"      [WARN] Error: {e}")
             article["ai_summary"] = article.get("description", "")[:200] + "..."
             article["tags"] = []
 
@@ -160,7 +218,7 @@ def save_candidates_to_r2(articles: list, r2: R2Storage) -> list:
     Returns:
         List of candidate info dicts (for manifest creation)
     """
-    print("\n Saving candidates to R2 storage...")
+    print("\n[R2] Saving candidates to R2 storage...")
 
     # Reset counters for this batch
     r2.reset_counters()
@@ -181,18 +239,18 @@ def save_candidates_to_r2(articles: list, r2: R2Storage) -> list:
             )
 
             candidates.append(result)
-            print(f"   Saved: {result.get('article_id', 'unknown')}")
+            print(f"   [OK] Saved: {result.get('article_id', 'unknown')}")
 
         except Exception as e:
-            print(f"   Error saving {article.get('title', 'unknown')[:30]}: {e}")
+            print(f"   [ERROR] Saving {article.get('title', 'unknown')[:30]}: {e}")
 
     # Create/update manifest with all candidates
     if candidates:
         try:
             manifest_path = r2.save_manifest(candidates)
-            print(f"   Manifest saved: {manifest_path}")
+            print(f"   [MANIFEST] Saved: {manifest_path}")
         except Exception as e:
-            print(f"   Error saving manifest: {e}")
+            print(f"   [WARN] Failed to save manifest: {e}")
 
     return candidates
 
@@ -227,25 +285,25 @@ async def run_pipeline(
             if sid in CUSTOM_SCRAPER_MAP:
                 valid_sources.append(sid)
             else:
-                print(f" Skipping {sid}: not a valid custom scraper")
+                print(f"[WARN] Skipping {sid}: not a valid custom scraper")
     else:
         # Run all available custom scrapers
         valid_sources = [s for s in available_scrapers if s in CUSTOM_SCRAPER_MAP]
 
     if not valid_sources:
-        print(" No valid custom scrapers to run. Exiting.")
+        print("[ERROR] No valid custom scrapers to run. Exiting.")
         return
 
     # Log pipeline start
     print(f"\n{'=' * 60}")
-    print(" ADUmedia Custom Scrapers Pipeline")
+    print("[START] ADUmedia Custom Scrapers Pipeline")
     print(f"{'=' * 60}")
-    print(f" {datetime.now().strftime('%B %d, %Y at %H:%M')}")
-    print(f" Scrapers: {len(valid_sources)}")
+    print(f"[DATE] {datetime.now().strftime('%B %d, %Y at %H:%M')}")
+    print(f"[SCRAPERS] {len(valid_sources)}")
     print(f"   {', '.join(valid_sources)}")
-    print(f" Looking back: {hours} hours")
-    print(f" Content filter: {'disabled' if skip_filter else 'enabled'}")
-    print(f" Content scraping: {'disabled' if skip_scraping else 'enabled'}")
+    print(f"[LOOKBACK] {hours} hours")
+    print(f"[FILTER] {'disabled' if skip_filter else 'enabled'}")
+    print(f"[SCRAPING] {'disabled' if skip_scraping else 'enabled'}")
     print(f"{'=' * 60}")
 
     scraper = None
@@ -256,15 +314,15 @@ async def run_pipeline(
         # Initialize R2 storage
         try:
             r2 = R2Storage()
-            print(" R2 storage connected")
+            print("[OK] R2 storage connected")
         except Exception as e:
-            print(f" R2 not configured: {e}")
+            print(f"[WARN] R2 not configured: {e}")
             r2 = None
 
         # =================================================================
         # Step 1: Run Custom Scrapers
         # =================================================================
-        print("\n Step 1: Running custom scrapers...")
+        print("\n[STEP 1] Running custom scrapers...")
 
         all_articles = []
 
@@ -288,80 +346,59 @@ async def run_pipeline(
                 print(f"   [{source_id}] Error: {e}")
 
         articles = all_articles
-        print(f"\n Total new articles: {len(articles)}")
+        print(f"\n[TOTAL] Total new articles: {len(articles)}")
 
         if not articles:
-            print("\n No new articles found. Exiting.")
+            print("\n[EMPTY] No new articles found. Exiting.")
             return
 
         # =================================================================
         # Step 2: Scrape Full Content
         # =================================================================
         if not skip_scraping and articles:
-            print("\n Step 2: Scraping full article content...")
+            print("\n[STEP 2] Scraping full article content...")
             try:
                 scraper = ArticleScraper()
                 # ArticleScraper initializes browsers in scrape_articles
                 articles = await scraper.scrape_articles(articles)
-                print(f"   Scraped {len(articles)} articles")
+                print(f"   [STATS] Scraped {len(articles)} articles")
             except Exception as e:
-                print(f"   Scraping failed: {e}")
+                print(f"   [ERROR] Scraping failed: {e}")
                 print("   Continuing with basic article data...")
         else:
-            print("\n Step 2: Skipping content scraping (--no-scrape)")
+            print("\n[STEP 2] Skipping content scraping (--no-scrape)")
 
         # =================================================================
-        # Step 3: AI Content Filtering
+        # Step 3: AI Content Filtering (BEFORE summaries - saves API costs)
         # =================================================================
         if not skip_filter and articles:
-            print("\n Step 3: AI content filtering...")
+            print("\n[STEP 3] AI content filtering...")
             try:
                 llm = create_llm()
-                filtered = []
+                articles, excluded_articles = filter_articles(articles, llm)
 
-                for i, article in enumerate(articles, 1):
-                    title = article.get("title", "No title")
-                    print(f"   [{i}/{len(articles)}] {title[:50]}...")
-
-                    prompt = FILTER_PROMPT_TEMPLATE.format(
-                        title=title,
-                        description=article.get("description", "")[:500],
-                        content=article.get("full_content", article.get("content", ""))[:1000]
-                    )
-
-                    response = llm.invoke(prompt)
-                    result = parse_filter_response(response.content)
-
-                    if result.get("include", True):
-                        filtered.append(article)
-                        print("      Included")
-                    else:
-                        excluded_articles.append(article)
-                        print(f"      Excluded: {result.get('reason', 'N/A')}")
-
-                articles = filtered
-                print(f"\n   Filtered: {len(articles)} included, {len(excluded_articles)} excluded")
+                print(f"\n   [STATS] Filtered: {len(articles)} included, {len(excluded_articles)} excluded")
 
                 if not articles:
-                    print("\n All articles filtered out. Exiting.")
+                    print("\n[EMPTY] All articles filtered out. Exiting.")
                     return
 
             except Exception as e:
-                print(f"   AI filtering failed: {e}")
+                print(f"   [ERROR] AI filtering failed: {e}")
                 print("   Continuing with all articles...")
         else:
-            print("\n Step 3: Skipping AI filter (--no-filter)")
+            print("\n[STEP 3] Skipping AI filter (--no-filter)")
 
         # =================================================================
-        # Step 4: Generate AI Summaries
+        # Step 4: Generate AI Summaries (only for filtered articles)
         # =================================================================
-        print("\n Step 4: Generating AI summaries...")
+        print("\n[STEP 4] Generating AI summaries...")
 
         try:
             llm = create_llm()
             articles = generate_summaries(articles, llm, SUMMARIZE_PROMPT_TEMPLATE)
         except Exception as e:
-            print(f"   AI summarization failed: {e}")
+            print(f"   [ERROR] AI summarization failed: {e}")
             for article in articles:
                 if not article.get("ai_summary"):
                     article["ai_summary"] = article.get("description", "")[:200] + "..."
@@ -371,15 +408,16 @@ async def run_pipeline(
         # Step 5: Save to R2 Storage
         # =================================================================
         if r2:
+            print("\n[STEP 5] Saving to R2 storage...")
             save_candidates_to_r2(articles, r2)
         else:
-            print("\n Step 5: Skipping R2 storage (not configured)")
+            print("\n[STEP 5] Skipping R2 storage (not configured)")
 
         # =================================================================
         # Done
         # =================================================================
         print(f"\n{'=' * 60}")
-        print(" Pipeline completed!")
+        print("[DONE] Pipeline completed!")
         print(f"   Articles processed: {len(articles)}")
         print(f"   Articles excluded: {len(excluded_articles)}")
         print(f"{'=' * 60}")
@@ -395,7 +433,7 @@ async def run_pipeline(
 
 def list_available_scrapers():
     """List all available custom scrapers."""
-    print("\n Available Custom Scrapers")
+    print("\n[LIST] Available Custom Scrapers")
     print("=" * 60)
 
     all_custom = get_custom_scraper_ids()
@@ -413,7 +451,7 @@ def list_available_scrapers():
         print(f"{source_id:<35} {name:<25} {status:<12}")
 
     implemented_count = len([s for s in all_custom if s in CUSTOM_SCRAPER_MAP])
-    print(f"\n Total: {len(all_custom)} configured, {implemented_count} implemented")
+    print(f"\n[TOTAL] {len(all_custom)} configured, {implemented_count} implemented")
     print()
 
 

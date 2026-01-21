@@ -459,20 +459,22 @@ class BaseCustomScraper(ABC):
         article: dict
     ) -> Optional[dict]:
         """
-        Download hero image and save to R2 storage.
+        Download hero image and prepare for R2 storage.
 
-        This method handles the full flow:
+        This method handles:
         1. Download image bytes via Playwright
-        2. Upload to R2 storage
-        3. Return updated hero_image dict with r2_path and r2_url
+        2. Return hero_image dict with bytes included
+
+        NOTE: R2 upload is handled by main pipeline's save_candidate()
+        to ensure consistent article naming (source_001, source_002, etc.).
 
         Args:
             page: Playwright page object (for downloading)
             image_url: URL of the image to download
-            article: Article dict (needed for slug generation)
+            article: Article dict (for reference)
 
         Returns:
-            Updated hero_image dict with r2_path/r2_url, or None if failed
+            hero_image dict with bytes included, or None if failed
         """
         if not image_url:
             return None
@@ -501,34 +503,17 @@ class BaseCustomScraper(ABC):
             finally:
                 await download_page.close()
 
-            # Initialize R2 and save
-            from storage.r2 import R2Storage
-            r2 = R2Storage()
-
-            # Create hero_image dict for the article
+            # Return hero_image dict with bytes (R2 save handled by main pipeline)
             hero_image = {
                 "url": image_url,
                 "width": None,
                 "height": None,
-                "source": "custom_scraper"
+                "source": "custom_scraper",
+                "bytes": image_bytes,  # Include bytes for main pipeline's save_candidate()
             }
 
-            # Temporarily add hero_image to article for save_hero_image
-            article["hero_image"] = hero_image
-
-            # Save to R2
-            updated_hero = r2.save_hero_image(
-                image_bytes=image_bytes,
-                article=article,
-                source=self.source_id
-            )
-
-            if updated_hero and updated_hero.get("r2_path"):
-                print(f"[{self.source_id}]    Saved to R2: {updated_hero.get('r2_path')}")
-                return updated_hero
-            else:
-                print(f"[{self.source_id}]    Failed to save to R2")
-                return hero_image  # Return original without r2 info
+            print(f"[{self.source_id}]    Hero image ready for R2 upload ({len(image_bytes)} bytes)")
+            return hero_image
 
         except Exception as e:
             print(f"[{self.source_id}]    Hero image error: {e}")

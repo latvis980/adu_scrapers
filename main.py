@@ -149,7 +149,7 @@ def generate_summaries(articles: list, llm, prompt_template: str) -> list:
     return articles
 
 
-def save_candidates_to_r2(articles: list, r2: R2Storage) -> dict:
+def save_candidates_to_r2(articles: list, r2: R2Storage) -> list:
     """
     Save articles as editorial candidates to R2 storage.
 
@@ -158,14 +158,14 @@ def save_candidates_to_r2(articles: list, r2: R2Storage) -> dict:
         r2: R2Storage instance
 
     Returns:
-        Dict with saved paths
+        List of candidate info dicts (for manifest creation)
     """
     print("\n Saving candidates to R2 storage...")
 
     # Reset counters for this batch
     r2.reset_counters()
 
-    paths = {}
+    candidates = []
     for article in articles:
         try:
             # Get hero image bytes if available
@@ -180,13 +180,21 @@ def save_candidates_to_r2(articles: list, r2: R2Storage) -> dict:
                 image_bytes=image_bytes
             )
 
-            paths[article["link"]] = result
-            print(f"   Saved: {result.get('id', 'unknown')}")
+            candidates.append(result)
+            print(f"   Saved: {result.get('article_id', 'unknown')}")
 
         except Exception as e:
             print(f"   Error saving {article.get('title', 'unknown')[:30]}: {e}")
 
-    return paths
+    # Create/update manifest with all candidates
+    if candidates:
+        try:
+            manifest_path = r2.save_manifest(candidates)
+            print(f"   Manifest saved: {manifest_path}")
+        except Exception as e:
+            print(f"   Error saving manifest: {e}")
+
+    return candidates
 
 
 # =============================================================================

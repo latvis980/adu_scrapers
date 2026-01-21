@@ -344,8 +344,22 @@ class ArticleScraper:
                 # Dismiss popups/overlays
                 await self._dismiss_overlays(page)
 
-                # Extract hero image (og:image) - do this FIRST before any DOM manipulation
-                hero_image = await self._extract_hero_image(page, url)
+                # Check if article already has hero_image with bytes (from custom scraper)
+                # If so, preserve it and skip extraction
+                existing_hero = article.get("hero_image")
+                if existing_hero and existing_hero.get("bytes"):
+                    hero_image = existing_hero
+                    logger.info(f"   🖼️ Preserving existing hero image from custom scraper")
+                else:
+                    # Extract hero image (og:image) - do this FIRST before any DOM manipulation
+                    hero_image = await self._extract_hero_image(page, url)
+
+                    # Download hero image bytes for R2 storage
+                    if hero_image and hero_image.get("url"):
+                        image_bytes = await self.download_hero_image(hero_image, context)
+                        if image_bytes:
+                            hero_image["bytes"] = image_bytes
+                            logger.info(f"   📥 Hero image bytes downloaded: {len(image_bytes)} bytes")
 
                 # Extract content
                 content = await self._extract_article_content(page, url)

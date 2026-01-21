@@ -357,17 +357,16 @@ class GoooodScraper(BaseCustomScraper):
                         "hero_image": None,
                     }
 
-                    # Download and save hero image to R2 if found
+                    # Download hero image bytes (R2 save handled by main pipeline)
                     if image_url:
                         hero_image = await self._download_and_save_hero_image(
                             page=page,
                             image_url=image_url,
                             article=article
                         )
-                        if hero_image:
+                        if hero_image and hero_image.get("bytes"):
                             article["hero_image"] = hero_image
-                            if hero_image.get("r2_path"):
-                                images_saved += 1
+                            images_saved += 1
 
                     if self._validate_article(article):
                         new_articles.append(article)
@@ -383,7 +382,7 @@ class GoooodScraper(BaseCustomScraper):
                 print(f"   Articles in grid: {len(extracted)}")
                 print(f"   After date filter: {len(date_filtered)}")
                 print(f"   New articles: {len(new_urls)}")
-                print(f"   Hero images saved to R2: {images_saved}")
+                print(f"   Hero images ready: {images_saved}")
                 print(f"   Returning to pipeline: {len(new_articles)}")
 
                 return new_articles

@@ -619,17 +619,16 @@ class ArchipositionScraper(BaseCustomScraper):
                     if date_iso:
                         article['published'] = date_iso
 
-                    # Download and save hero image to R2 (image URL from grid!)
+                    # Download hero image bytes (R2 save handled by main pipeline)
                     if image_url:
                         print(f"[{self.source_id}]    Hero image: {image_url[:60]}...")
                         hero_image = await self._download_hero_image_http(
                             image_url=image_url,
                             article=article
                         )
-                        if hero_image:
+                        if hero_image and hero_image.get('bytes'):
                             article['hero_image'] = hero_image
-                            if hero_image.get('r2_path'):
-                                images_saved += 1
+                            images_saved += 1
                     else:
                         print(f"[{self.source_id}]    No hero image in grid")
 
@@ -649,7 +648,7 @@ class ArchipositionScraper(BaseCustomScraper):
                 print(f"   Articles found: {len(extracted)}")
                 print(f"   New articles: {len(new_urls)}")
                 print(f"   Skipped (too old): {skipped_old}")
-                print(f"   Hero images saved to R2: {images_saved}")
+                print(f"   Hero images ready: {images_saved}")
                 print(f"   Returning to pipeline: {len(new_articles)}")
 
                 return new_articles

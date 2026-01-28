@@ -1,4 +1,3 @@
-# prompts/summarize.py
 """
 Summarization Prompts
 Prompts for generating article summaries and tags.
@@ -13,6 +12,7 @@ Your task is to create concise, informative summaries of architecture and design
 Today's date is {current_date}. Use this for temporal context when describing projects.
 
 Guidelines:
+- Start with the project name and author or bureau in this format: Cloud 11 Office Complex / Snøhetta
 - Write exactly 2 sentences in British English
 - First sentence: What is the project (who designed what, where)
 - Second sentence: What makes it notable or interesting
@@ -27,18 +27,18 @@ Guidelines:
 SUMMARIZE_USER_TEMPLATE = """Summarize this architecture article:
 
 Title: {title}
-
 Description: {description}
-
 Source: {url}
 
 Respond with ONLY:
-1. A 2-sentence summary
-2. On a new line, 2-3 relevant tags as comma-separated lowercase words. Tags shouldn't have spaces or hyphens. 
-Example format:
-Studio XYZ has completed a residential tower in Tokyo featuring a diagrid structural system. The 32-story building uses cross-laminated timber for its facade, making it one of the tallest timber-hybrid structures in Asia.
+1. Headline
+2. On a new line, a 2-sentence summary
+3. On a new line, 1 relevant tag, the realm of the project (landscapearchitecture, urbanism, residentialdevelopment, etc.). No spaces or hyphens. 
 
-residential, tokyo, timberconstruction"""
+Example format:
+Residential tower in Tokyo / Studio XYZ
+Studio XYZ has completed a residential tower in Tokyo featuring a diagrid structural system. The 32-story building uses cross-laminated timber for its facade, making it one of the tallest timber-hybrid structures in Asia.
+residential"""
 
 # Combined ChatPromptTemplate for LangChain
 SUMMARIZE_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([
@@ -49,40 +49,31 @@ SUMMARIZE_PROMPT_TEMPLATE = ChatPromptTemplate.from_messages([
 
 def parse_summary_response(response_text: str) -> dict:
     """
-    Parse AI response into summary and tags.
+    Parse AI response into headline, summary and tag.
 
     Args:
         response_text: Raw AI response
 
     Returns:
-        Dict with 'summary' and 'tags' keys
+        Dict with 'headline', 'summary' and 'tag' keys
     """
-    lines = response_text.strip().split('\n')
+    lines = [line.strip() for line in response_text.strip().split('\n') if line.strip()]
 
-    # Find the tags line (last non-empty line with commas)
-    tags_line = ""
-    summary_lines = []
-
-    for line in reversed(lines):
-        line = line.strip()
-        if not line:
-            continue
-        if not tags_line and ',' in line and len(line) < 100:
-            # Likely the tags line
-            tags_line = line
-        else:
-            summary_lines.insert(0, line)
-
-    summary = ' '.join(summary_lines).strip()
-
-    # Parse tags
-    tags = []
-    if tags_line:
-        tags = [tag.strip().lower() for tag in tags_line.split(',')]
-        # Clean up tags (remove any that look like sentences)
-        tags = [t for t in tags if len(t) < 30 and ' ' not in t or t.replace(' ', '_')]
+    if len(lines) >= 3:
+        headline = lines[0]
+        summary = lines[1]
+        tag = lines[2].lower().strip()
+    elif len(lines) == 2:
+        headline = lines[0]
+        summary = lines[1]
+        tag = ""
+    else:
+        headline = ""
+        summary = lines[0] if lines else ""
+        tag = ""
 
     return {
+        "headline": headline,
         "summary": summary,
-        "tags": tags[:3]  # Max 3 tags
+        "tag": tag
     }

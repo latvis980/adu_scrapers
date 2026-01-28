@@ -301,7 +301,7 @@ class R2Storage:
         - Hero image to shared images/ folder (if provided)
 
         Args:
-            article: Article dict with ai_summary, tags, etc.
+            article: Article dict with ai_summary, tag, etc.
             image_bytes: Optional hero image bytes
             target_date: Target date (defaults to today)
 
@@ -342,8 +342,9 @@ class R2Storage:
             "title": article.get("title", ""),
             "link": article.get("link", ""),
             "published": article.get("published"),
+            "headline": article.get("headline", ""),
             "ai_summary": article.get("ai_summary", ""),
-            "tags": article.get("tags", []),
+            "tag": article.get("tag", ""),
             "image": {
                 "filename": image_filename,
                 "r2_path": image_path,

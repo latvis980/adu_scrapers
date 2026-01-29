@@ -13,6 +13,7 @@ Pipeline:
     3. AI content filtering (BEFORE summarization to save costs)
     4. Generate AI summaries (OpenAI) - only for filtered articles
     5. Save articles to R2 storage
+    6. Record articles to Supabase (for cross-edition tracking)
 
 Usage:
     python main.py                            # Run all custom scrapers
@@ -27,7 +28,8 @@ Environment Variables (set in Railway):
     R2_ACCESS_KEY_ID            - R2 access key
     R2_SECRET_ACCESS_KEY        - R2 secret key
     R2_BUCKET_NAME              - R2 bucket name
-    DATABASE_URL                - PostgreSQL connection string
+    SUPABASE_URL                - Supabase project URL (optional)
+    SUPABASE_KEY                - Supabase API key (optional)
 """
 
 import asyncio
@@ -45,6 +47,9 @@ from operators.monitor import create_llm, summarize_article
 
 # Import storage
 from storage.r2 import R2Storage
+
+# Import database (optional - graceful degradation if not configured)
+from database.connection import record_batch_to_db, test_connection as test_db_connection
 
 # Import prompts and config
 from prompts.summarize import SUMMARIZE_PROMPT_TEMPLATE
@@ -251,7 +256,7 @@ def convert_webp_to_jpeg(image_bytes: bytes, quality: int = 85) -> tuple[bytes, 
         img.save(output, format='JPEG', quality=quality, optimize=True)
         jpeg_bytes = output.getvalue()
 
-        print(f"      [CONVERT] {original_format} → JPEG ({len(image_bytes)} → {len(jpeg_bytes)} bytes)")
+        print(f"      [CONVERT] {original_format} -> JPEG ({len(image_bytes)} -> {len(jpeg_bytes)} bytes)")
         return jpeg_bytes, 'image/jpeg'
 
     except Exception as e:
@@ -335,6 +340,7 @@ async def download_hero_images(articles: list) -> list:
 def save_candidates_to_r2(articles: list, r2: R2Storage) -> list:
     """
     Save articles as editorial candidates to R2 storage.
+    Also records to Supabase for cross-edition tracking.
 
     Args:
         articles: List of article dicts with ai_summary
@@ -363,6 +369,9 @@ def save_candidates_to_r2(articles: list, r2: R2Storage) -> list:
                 image_bytes=image_bytes
             )
 
+            # Store original article in result for DB recording
+            result["article"] = article
+
             candidates.append(result)
             print(f"   [OK] Saved: {result.get('article_id', 'unknown')}")
 
@@ -376,6 +385,17 @@ def save_candidates_to_r2(articles: list, r2: R2Storage) -> list:
             print(f"   [MANIFEST] Saved: {manifest_path}")
         except Exception as e:
             print(f"   [WARN] Failed to save manifest: {e}")
+
+    # =================================================================
+    # NEW: Record to Supabase for cross-edition tracking
+    # =================================================================
+    print(f"\n[DB] Recording to Supabase...")
+    db_result = record_batch_to_db(candidates, status="candidate")
+
+    if db_result.get("db_available"):
+        print(f"   [STATS] Recorded: {db_result['recorded']}, Skipped: {db_result['skipped']}, Failed: {db_result['failed']}")
+    else:
+        print(f"   [SKIP] Supabase not configured")
 
     return candidates
 
@@ -443,6 +463,12 @@ async def run_pipeline(
         except Exception as e:
             print(f"[WARN] R2 not configured: {e}")
             r2 = None
+
+        # Test Supabase connection (optional)
+        if test_db_connection():
+            print("[OK] Supabase connected")
+        else:
+            print("[INFO] Supabase not configured (articles won't be tracked in DB)")
 
         # =================================================================
         # Step 1: Run Custom Scrapers
@@ -542,10 +568,10 @@ async def run_pipeline(
                     article["tag"] = ""
 
         # =================================================================
-        # Step 5: Save to R2 Storage
+        # Step 5: Save to R2 Storage + Record to Supabase
         # =================================================================
         if r2:
-            print("\n[STEP 5] Saving to R2 storage...")
+            print("\n[STEP 5] Saving to R2 storage and recording to database...")
             save_candidates_to_r2(articles, r2)
         else:
             print("\n[STEP 5] Skipping R2 storage (not configured)")

@@ -28,3 +28,5 @@ aiohttp
 
 # Image Processing
 Pillow>=10.0.0
+
+supabase>=2.0.0

@@ -13,7 +13,7 @@ Your task is to create concise, informative summaries of architecture and design
 Today's date is {current_date}. Use this for temporal context when describing projects.
 
 Guidelines:
-- Title format: PROJECT NAME / ARCHITECT OR BUREAU (e.g., "Cloud 11 Office Complex / Snøhetta")
+- Title format: PROJECT NAME / ARCHITECT OR BUREAU (e.g., "Cloud 11 Office Complex / Snøhetta"). If the architect is unknown, don't write anything, just the name of the project.
 - Write description: exactly 2 sentences in British English. First sentence: What is the project (who designed what, where). Second sentence: What makes it notable or interesting
 - Be specific and factual, avoid generic praise
 - Use professional architectural terminology where appropriate
@@ -31,9 +31,9 @@ Description: {description}
 Source: {url}
 
 Respond with ONLY:
-1. Title in format: PROJECT NAME / ARCHITECT OR BUREAU
+1. Title in format: PROJECT NAME / ARCHITECT OR BUREAU (if known)
 2. On a new line, a 2-sentence summary
-3. On a new line, 1 relevant tag (the realm of the project: landscapearchitecture, urbanism, residentialdevelopment, etc.). No spaces, hyphens, or special characters in the tag.
+3. On a new line, 1 relevant tag (the realm of the project: urbanism, culture, education, etc.). No spaces, hyphens, or special characters in the tag.
 
 Example format:
 Cloud 11 Office Complex / Snøhetta

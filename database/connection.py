@@ -123,7 +123,8 @@ def record_article_to_db(
         "article_url": url,
         "source_id": article.get("source_id", "unknown"),
         "source_name": article.get("source_name", ""),
-        "original_title": article.get("title", "")[:500],  # Limit length
+        "original_title": article.get("title", "")[:500],
+        "headline": article.get("headline", ""),
         "original_publish_date": published_date,
         "ai_summary": article.get("ai_summary", ""),
         "tags": article.get("tags", []),
